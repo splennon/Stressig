@@ -29,6 +29,30 @@
             max-width: 700px;
             width: 100%;
             text-align: center;
+            position: relative;
+        }
+
+        .restart-btn {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: none;
+            border: none;
+            color: #999;
+            font-size: 1.2rem;
+            cursor: pointer;
+            padding: 8px;
+            border-radius: 50%;
+            transition: all 0.3s ease;
+            opacity: 0.6;
+            min-width: auto;
+        }
+
+        .restart-btn:hover {
+            background: #f8f9fa;
+            color: #666;
+            opacity: 1;
+            transform: none;
         }
 
         h1 {
@@ -97,6 +121,20 @@
             backface-visibility: hidden;
             padding: 20px;
             overflow-y: auto;
+        }
+
+        .rank-indicator {
+            position: absolute;
+            bottom: 10px;
+            right: 15px;
+            font-size: 0.7rem;
+            opacity: 0.7;
+            color: rgba(255, 255, 255, 0.8);
+            font-weight: 500;
+            background: rgba(0, 0, 0, 0.2);
+            padding: 4px 8px;
+            border-radius: 12px;
+            backdrop-filter: blur(5px);
         }
 
         .card-front {
@@ -373,6 +411,8 @@
 </head>
 <body>
     <div class="container">
+        <button class="restart-btn" id="restartBtn" title="Start Over">↺</button>
+        
         <h1>German Flashcards</h1>
         
         <div class="stats">
@@ -406,10 +446,11 @@
             <div class="rank-selector" id="rankSelector" style="display: none;">
                 <h4>Select Difficulty Level:</h4>
                 <div class="rank-buttons">
-                    <button class="rank-btn" data-rank="100">Easy (Rank ≤ 100)</button>
-                    <button class="rank-btn" data-rank="500">Medium (Rank ≤ 500)</button>
-                    <button class="rank-btn" data-rank="1000">Hard (Rank ≤ 1000)</button>
-                    <button class="rank-btn" data-rank="all">All Words</button>
+                    <button class="rank-btn" data-rank="1-20">Very Common (1-20)</button>
+                    <button class="rank-btn" data-rank="20-45">Somewhat Common (20-45)</button>
+                    <button class="rank-btn" data-rank="45-80">Less Common (45-80)</button>
+                    <button class="rank-btn" data-rank="80-100">Uncommon (80-100)</button>
+                    <button class="rank-btn" data-rank="all">All Words (1-100)</button>
                 </div>
             </div>
         </div>
@@ -468,6 +509,7 @@
                         <div class="field-label">Imperative</div>
                         <div class="field-value blurred" id="imperativField"></div>
                     </div>
+                    <div class="rank-indicator" id="rankIndicator">Rank: - / 100</div>
                 </div>
                 <div class="card-face card-back">
                     <div class="field-group">
@@ -531,6 +573,7 @@
                     nextBtn: document.getElementById('nextBtn'),
                     startBtn: document.getElementById('startBtn'),
                     refreshBtn: document.getElementById('refreshBtn'),
+                    restartBtn: document.getElementById('restartBtn'),
                     
                     germanField: document.getElementById('germanField'),
                     englishField: document.getElementById('englishField'),
@@ -543,6 +586,7 @@
                     preteritField: document.getElementById('preteritField'),
                     konjunktivField: document.getElementById('konjunktivField'),
                     imperativField: document.getElementById('imperativField'),
+                    rankIndicator: document.getElementById('rankIndicator'),
                     
                     articleGroup: document.getElementById('articleGroup'),
                     pluralGroup: document.getElementById('pluralGroup'),
@@ -563,6 +607,7 @@
                 this.elements.nextBtn.addEventListener('click', () => this.nextCard());
                 this.elements.startBtn.addEventListener('click', () => this.startLearning());
                 this.elements.refreshBtn.addEventListener('click', () => this.showWordTypeSelector());
+                this.elements.restartBtn.addEventListener('click', () => this.showWordTypeSelector());
 
                 this.setupFieldClickListeners();
 
@@ -649,6 +694,10 @@
                 this.elements.wordTypeSelector.style.display = 'block';
                 this.elements.rankSelector.style.display = 'none';
                 
+                // Hide stats on settings screen
+                document.querySelector('.stats').style.display = 'none';
+                document.querySelector('.progress').style.display = 'none';
+                
                 document.querySelectorAll('.type-btn, .rank-btn').forEach(btn => {
                     btn.classList.remove('selected');
                 });
@@ -693,13 +742,7 @@
 
             async fetchWordsFromEndpoint(endpoint) {
                 const baseUrl = `/api/${endpoint}`;
-                let url;
-                
-                if (this.selectedRank !== 'all') {
-                    url = `${baseUrl}/rank/${this.selectedRank}`;
-                } else {
-                    url = baseUrl;
-                }
+                let url = baseUrl;
                 
                 const response = await fetch(url);
                 
@@ -709,9 +752,10 @@
                 
                 const data = await response.json();
                 
-                if (this.selectedRank !== 'all' && url === baseUrl) {
-                    const maxRank = parseInt(this.selectedRank);
-                    return data.filter(word => word.rank && word.rank <= maxRank);
+                // Filter by rank range if not 'all'
+                if (this.selectedRank !== 'all') {
+                    const [minRank, maxRank] = this.selectedRank.split('-').map(Number);
+                    return data.filter(word => word.rank && word.rank >= minRank && word.rank <= maxRank);
                 }
                 
                 return data;
@@ -751,6 +795,10 @@
                 this.elements.startControls.style.display = 'flex';
                 this.elements.wordTypeSelector.style.display = 'none';
                 
+                // Show stats after word loading
+                document.querySelector('.stats').style.display = 'flex';
+                document.querySelector('.progress').style.display = 'block';
+                
                 this.elements.totalCards.textContent = this.words.length;
                 this.elements.wordType.textContent = this.selectedWordType.charAt(0).toUpperCase() + this.selectedWordType.slice(1);
                 
@@ -786,6 +834,10 @@
                 this.elements.germanField.classList.remove('blurred');
                 
                 this.elements.englishField.textContent = word.en || 'No translation';
+                
+                // Update rank indicator
+                const rank = word.rank || '-';
+                this.elements.rankIndicator.textContent = `Rank: ${rank} / 100`;
                 
                 this.hideAllConditionalGroups();
                 
